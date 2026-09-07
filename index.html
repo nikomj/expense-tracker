@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ExpenseTracker">
+
+  <!-- PWA Manifest ช่วยให้มือถือแสดงปุ่ม Add to Home Screen ได้สมบูรณ์ -->
+  <link rel="manifest" href='data:application/manifest+json,{"name":"Expense Tracker","short_name":"Expense","start_url":".","display":"standalone","background_color":"#ffffff","theme_color":"#2563eb","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/2344/2344132.png","sizes":"512x512","type":"image/png"}]}'>
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2344/2344132.png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+  <title>Expense Tracker App</title>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800">
+  <div id="app" class="max-w-md mx-auto bg-white min-h-screen shadow-xl flex flex-col">
+    
+    <!-- LOGIN SCREEN -->
+    <div v-if="!isLoggedIn" class="p-6 flex-1 flex flex-col justify-center">
+      <div class="text-center mb-8">
+        <h1 class="text-3xl font-extrabold text-blue-600">Expense Tracker</h1>
+        <p class="text-sm text-slate-500 mt-1">ระบบบันทึกและวิเคราะห์รายรับ-รายจ่าย</p>
+      </div>
+      <div class="space-y-4">
+        <input type="text" v-model="loginForm.username" placeholder="Username / UserID" class="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500">
+        <input type="password" v-model="loginForm.password" placeholder="Password" class="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500">
+        <button @click="handleLogin" :disabled="isLoading" class="w-full bg-blue-600 text-white font-bold p-3 rounded-lg hover:bg-blue-700">
+          {{ isLoading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ' }}
+        </button>
+        <p v-if="errorMessage" class="text-red-500 text-sm text-center">{{ errorMessage }}</p>
+      </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div v-else class="flex-1 flex flex-col">
+      <header class="bg-blue-600 text-white p-4 flex justify-between items-center shadow">
+        <div>
+          <h2 class="font-bold text-base">{{ user.fullName }}</h2>
+          <span class="text-xs bg-blue-700 px-2 py-0.5 rounded text-blue-200">{{ user.role }}</span>
+        </div>
+        <button @click="handleLogout" class="text-xs bg-blue-700 hover:bg-blue-800 px-3 py-1.5 rounded">Logout</button>
+      </header>
+
+      <div class="flex border-b bg-slate-50 text-xs">
+        <button @click="activeTab = 'transactions'" :class="activeTab === 'transactions' ? 'border-b-2 border-blue-600 text-blue-600 font-bold' : 'text-slate-500'" class="flex-1 py-3 text-center">
+          📝 บันทึกรายการ
+        </button>
+        <button @click="activeTab = 'monthly'" :class="activeTab === 'monthly' ? 'border-b-2 border-blue-600 text-blue-600 font-bold' : 'text-slate-500'" class="flex-1 py-3 text-center">
+          📅 สรุปรายเดือน
+        </button>
+      </div>
+
+      <main class="p-4 space-y-4 flex-1">
+        <!-- PAGE 1: TRANSACTIONS -->
+        <div v-show="activeTab === 'transactions'" class="space-y-4">
+          <div class="bg-blue-50 border border-blue-100 p-3 rounded-xl flex items-center justify-between">
+            <span class="text-xs font-bold text-blue-800">📅 แสดงข้อมูลเดือน:</span>
+            <div class="flex space-x-2">
+              <select v-model="selectedMonth" class="border rounded-lg p-1.5 text-xs bg-white font-semibold outline-none">
+                <option v-for="(m, i) in monthList" :key="i" :value="i + 1">{{ m }}</option>
+              </select>
+              <select v-model="selectedYear" @change="fetchData" class="border rounded-lg p-1.5 text-xs bg-white font-semibold outline-none">
+                <option v-for="y in yearList" :key="y" :value="y">{{ y }}</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-center">
+              <span class="text-[10px] font-bold text-emerald-600 uppercase">รายรับ</span>
+              <p class="text-sm font-extrabold text-emerald-700 mt-1">฿{{ monthlyIncome.toLocaleString() }}</p>
+            </div>
+            <div class="bg-rose-50 border border-rose-200 p-3 rounded-xl text-center">
+              <span class="text-[10px] font-bold text-rose-600 uppercase">รายจ่าย</span>
+              <p class="text-sm font-extrabold text-rose-700 mt-1">฿{{ monthlyExpense.toLocaleString() }}</p>
+            </div>
+            <div :class="monthlyBalance >= 0 ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-amber-50 border-amber-200 text-amber-700'" class="border p-3 rounded-xl text-center">
+              <span class="text-[10px] font-bold uppercase">คงเหลือ</span>
+              <p class="text-sm font-extrabold mt-1">฿{{ monthlyBalance.toLocaleString() }}</p>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
+            <div class="flex justify-between items-center">
+              <h3 class="font-bold text-sm text-slate-700">{{ isEditing ? '✏️ แก้ไขรายการ' : '➕ เพิ่มรายการใหม่' }}</h3>
+              <button v-if="isEditing" @click="resetForm" class="text-xs text-slate-500 underline">ยกเลิก</button>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <select v-model="txnForm.type" class="border rounded-lg p-2 text-sm bg-white outline-none">
+                <option value="Expense">รายจ่าย (-)</option>
+                <option value="Income">รายรับ (+)</option>
+              </select>
+              <input type="date" v-model="txnForm.date" class="border rounded-lg p-2 text-sm bg-white outline-none">
+            </div>
+            <input type="number" v-model="txnForm.amount" placeholder="จำนวนเงิน (บาท)" class="w-full border rounded-lg p-2 text-sm bg-white outline-none">
+            <input type="text" v-model="txnForm.note" placeholder="รายละเอียด / หมายเหตุ" class="w-full border rounded-lg p-2 text-sm bg-white outline-none">
+            <button @click="submitTransaction" :disabled="isLoading" class="w-full text-white font-bold p-2.5 rounded-lg text-sm transition" :class="isEditing ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'">
+              {{ isLoading ? 'กำลังบันทึก...' : (isEditing ? 'อัปเดตรายการ' : 'บันทึกรายการ') }}
+            </button>
+          </div>
+
+          <div>
+            <div class="flex justify-between items-center mb-2">
+              <h3 class="font-bold text-sm text-slate-700">รายการประจำเดือน {{ monthList[selectedMonth - 1] }} {{ selectedYear }}</h3>
+              <span class="text-xs text-slate-500">จำนวน {{ filteredMonthlyTxns.length }} รายการ</span>
+            </div>
+            <div v-if="filteredMonthlyTxns.length === 0" class="text-center py-6 text-slate-400 text-xs bg-slate-50 border rounded-xl">
+              ไม่มีรายการในเดือนนี้
+            </div>
+            <ul v-else class="divide-y bg-white border rounded-xl overflow-hidden shadow-sm">
+              <li v-for="item in filteredMonthlyTxns" :key="item.transactionId" class="p-3 flex justify-between items-center hover:bg-slate-50">
+                <div>
+                  <p class="font-semibold text-sm text-slate-800">{{ item.note || 'ไม่ระบุรายการ' }}</p>
+                  <p class="text-[11px] text-slate-400">{{ item.date }}</p>
+                </div>
+                <div class="flex items-center space-x-3">
+                  <span :class="item.type === 'Income' ? 'text-emerald-600' : 'text-rose-600'" class="font-bold text-sm">
+                    {{ item.type === 'Income' ? '+' : '-' }}{{ Number(item.amount).toLocaleString() }}
+                  </span>
+                  <div class="flex space-x-1">
+                    <button @click="setEdit(item)" class="p-1 text-xs">✏️</button>
+                    <button @click="confirmDelete(item.transactionId)" class="p-1 text-xs">🗑️</button>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- PAGE 2: MONTHLY SUMMARY -->
+        <div v-show="activeTab === 'monthly'" class="space-y-4">
+          <div class="bg-blue-50 border border-blue-100 p-3 rounded-xl flex items-center justify-between">
+            <span class="text-xs font-bold text-blue-800">📊 เลือกปีประมวลผล:</span>
+            <select v-model="selectedYear" @change="fetchData" class="border rounded-lg p-1.5 text-xs bg-white font-semibold outline-none focus:ring-2 focus:ring-blue-500">
+              <option v-for="y in yearList" :key="y" :value="y">{{ y }}</option>
+            </select>
+          </div>
+
+          <div class="bg-white border rounded-xl overflow-hidden shadow-sm">
+            <div class="p-3 bg-slate-50 border-b flex justify-between items-center">
+              <h3 class="font-bold text-sm text-slate-700">ตารางสรุปรายเดือน ปี {{ selectedYear }}</h3>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr class="bg-slate-100 text-slate-600 border-b">
+                    <th class="p-2.5 font-bold">เดือน</th>
+                    <th class="p-2.5 font-bold text-right text-emerald-600">รายรับ</th>
+                    <th class="p-2.5 font-bold text-right text-rose-600">รายจ่าย</th>
+                    <th class="p-2.5 font-bold text-right text-blue-600">คงเหลือ</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y">
+                  <tr v-for="(summary, idx) in yearlyMonthlySummary" :key="idx" class="hover:bg-slate-50">
+                    <td class="p-2.5 font-semibold text-slate-700">{{ summary.monthName }}</td>
+                    <td class="p-2.5 text-right font-medium text-emerald-600">{{ summary.income > 0 ? '฿' + summary.income.toLocaleString() : '-' }}</td>
+                    <td class="p-2.5 text-right font-medium text-rose-600">{{ summary.expense > 0 ? '฿' + summary.expense.toLocaleString() : '-' }}</td>
+                    <td :class="summary.balance >= 0 ? 'text-blue-600 font-bold' : 'text-amber-600 font-bold'" class="p-2.5 text-right">฿{{ summary.balance.toLocaleString() }}</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr class="bg-slate-100 font-extrabold text-slate-800 border-t">
+                    <td class="p-2.5">รวมทั้งปี</td>
+                    <td class="p-2.5 text-right text-emerald-700">฿{{ annualTotalIncome.toLocaleString() }}</td>
+                    <td class="p-2.5 text-right text-rose-700">฿{{ annualTotalExpense.toLocaleString() }}</td>
+                    <td :class="annualNetBalance >= 0 ? 'text-blue-700' : 'text-amber-700'" class="p-2.5 text-right">฿{{ annualNetBalance.toLocaleString() }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, computed } = Vue;
+    // URL REST API จาก Apps Script ที่คุณDeploy ล่าสุด
+    const API_URL = "https://script.google.com/macros/s/AKfycbzNXqv4lyKLiqymvRqDhUl-ldhmAi7aOxNEqKdydVuG9xX51hlI4Zq7QY3VOYzKgX1hAg/exec";
+
+    createApp({
+      setup() {
+        const currentDate = new Date();
+        const activeTab = ref('transactions');
+        const isLoggedIn = ref(false);
+        const isLoading = ref(false);
+        const user = ref({});
+        const loginForm = ref({ username: '', password: '' });
+        const errorMessage = ref('');
+        const allYearTransactions = ref([]);
+        const isEditing = ref(false);
+
+        const selectedMonth = ref(currentDate.getMonth() + 1);
+        const selectedYear = ref(currentDate.getFullYear());
+        const monthList = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+        const yearList = [2024, 2025, 2026, 2027];
+
+        const initialForm = () => ({
+          transactionId: '', type: 'Expense', amount: '', note: '', categoryId: 'CAT001',
+          date: new Date().toISOString().split('T')[0]
+        });
+        const txnForm = ref(initialForm());
+
+        const callApi = async (action, data = {}) => {
+          try {
+            const res = await fetch(API_URL, {
+              method: 'POST',
+              body: JSON.stringify({ action, ...data })
+            });
+            return await res.json();
+          } catch (err) {
+            return { success: false, message: 'Network Error: ' + err.toString() };
+          }
+        };
+
+        const handleLogin = async () => {
+          if (!loginForm.value.username || !loginForm.value.password) {
+            errorMessage.value = 'กรุณากรอกข้อมูลให้ครบถ้วน';
+            return;
+          }
+          isLoading.value = true;
+          errorMessage.value = '';
+          const res = await callApi('login', { username: loginForm.value.username, password: loginForm.value.password });
+          isLoading.value = false;
+          if (res.success) {
+            isLoggedIn.value = true;
+            user.value = res.user;
+            fetchData();
+          } else {
+            errorMessage.value = res.message;
+          }
+        };
+
+        const fetchData = async () => {
+          isLoading.value = true;
+          const res = await callApi('getTransactions', { userId: user.value.userId, year: selectedYear.value });
+          isLoading.value = false;
+          if (res.success) {
+            allYearTransactions.value = res.data;
+          } else {
+            alert(res.message);
+          }
+        };
+
+        const submitTransaction = async () => {
+          if (!txnForm.value.amount || Number(txnForm.value.amount) <= 0) {
+            alert('กรุณากรอกจำนวนเงินให้ถูกต้อง');
+            return;
+          }
+          isLoading.value = true;
+          const payload = { ...txnForm.value, userId: user.value.userId };
+          const action = isEditing.value ? 'updateTransaction' : 'addTransaction';
+          const res = await callApi(action, { payload });
+          isLoading.value = false;
+          if (res.success) {
+            resetForm();
+            fetchData();
+          } else {
+            alert(res.message);
+          }
+        };
+
+        const filteredMonthlyTxns = computed(() => allYearTransactions.value.filter(t => t.month === Number(selectedMonth.value)));
+        const monthlyIncome = computed(() => filteredMonthlyTxns.value.filter(t => t.type === 'Income').reduce((s, t) => s + Number(t.amount), 0));
+        const monthlyExpense = computed(() => filteredMonthlyTxns.value.filter(t => t.type === 'Expense').reduce((s, t) => s + Number(t.amount), 0));
+        const monthlyBalance = computed(() => monthlyIncome.value - monthlyExpense.value);
+
+        const yearlyMonthlySummary = computed(() => {
+          return monthList.map((mName, idx) => {
+            const mNum = idx + 1;
+            const txns = allYearTransactions.value.filter(t => t.month === mNum);
+            const income = txns.filter(t => t.type === 'Income').reduce((s, t) => s + Number(t.amount), 0);
+            const expense = txns.filter(t => t.type === 'Expense').reduce((s, t) => s + Number(t.amount), 0);
+            return { monthName: mName, income, expense, balance: income - expense };
+          });
+        });
+
+        const annualTotalIncome = computed(() => allYearTransactions.value.filter(t => t.type === 'Income').reduce((s, t) => s + Number(t.amount), 0));
+        const annualTotalExpense = computed(() => allYearTransactions.value.filter(t => t.type === 'Expense').reduce((s, t) => s + Number(t.amount), 0));
+        const annualNetBalance = computed(() => annualTotalIncome.value - annualTotalExpense.value);
+
+        const setEdit = (item) => { isEditing.value = true; txnForm.value = { ...item }; };
+        const confirmDelete = async (txnId) => {
+          if (confirm('ยืนยันลบรายการ?')) {
+            isLoading.value = true;
+            const res = await callApi('deleteTransaction', { transactionId: txnId, userId: user.value.userId });
+            isLoading.value = false;
+            if (res.success) fetchData();
+            else alert(res.message);
+          }
+        };
+        const resetForm = () => { isEditing.value = false; txnForm.value = initialForm(); };
+        const handleLogout = () => { isLoggedIn.value = false; user.value = {}; };
+
+        return {
+          activeTab, isLoggedIn, isLoading, user, loginForm, errorMessage, allYearTransactions, filteredMonthlyTxns,
+          monthlyIncome, monthlyExpense, monthlyBalance, yearlyMonthlySummary, selectedMonth, selectedYear,
+          monthList, yearList, txnForm, isEditing, annualTotalIncome, annualTotalExpense, annualNetBalance,
+          handleLogin, fetchData, submitTransaction, setEdit, confirmDelete, resetForm, handleLogout
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
