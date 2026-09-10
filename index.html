@@ -227,7 +227,18 @@
           if (res.success) categories.value = res.data;
         };
 
-        const filteredCategories = computed(() => categories.value.filter(c => c.type === txnForm.value.type));
+const filteredCategories = computed(() => {
+  return categories.value.filter(c => {
+    const cType = String(c.type || '').trim().toLowerCase();
+    const formType = String(txnForm.value.type || '').trim().toLowerCase();
+    
+    const isExpense = cType === 'expense' || cType.includes('จ่าย') || cType.includes('expense');
+    const isIncome = cType === 'income' || cType.includes('รับ') || cType.includes('income');
+    const formIsExpense = formType === 'expense' || formType.includes('จ่าย');
+
+    return (formIsExpense && isExpense) || (!formIsExpense && isIncome);
+  });
+});
 
         const submitTransaction = async () => {
           if (!txnForm.value.amount || !txnForm.value.categoryId) { alert('กรุณากรอกข้อมูลและเลือกหมวดหมู่'); return; }
